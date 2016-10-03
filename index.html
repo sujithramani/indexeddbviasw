@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<meta charset=utf-8>
+<title>Indexed DB URLs via Service Worker</title>
+<script>
+var records = [
+  {name: 'alex', url: 'https://avatars0.githubusercontent.com/u/97331?v=3&s=200'},
+  {name: 'jungkee', url: 'https://avatars1.githubusercontent.com/u/1331169?v=3&s=200'},
+  {name: 'jake', url: 'https://avatars1.githubusercontent.com/u/93594?v=3&s=200'}
+];
+
+// Fetch the images
+Promise.all(records.map(
+  record => fetch(record.url)
+    .then(response => response.blob())
+    .then(blob => { record.image = blob; })
+))
+  .then(() => {
+
+    indexedDB.deleteDatabase('resources');
+    var open = indexedDB.open('resources');
+
+    // Set up the database schema
+    open.onupgradeneeded = () => {	
+      var db = open.result;
+      var store = db.createObjectStore('records', {autoIncrement: true});
+      store.createIndex('by_name', 'name');
+    };
+
+    open.onsuccess = () => {
+      var db = open.result;
+
+      // Store the images into the database
+      var tx = db.transaction('records', 'readwrite');
+      var store = tx.objectStore('records');
+      records.forEach((record) => store.put(record));
+
+      tx.oncomplete = () => {
+        db.close();
+
+        // Register the service worker
+        navigator.serviceWorker.register('./sw.js')
+          .then(registration => registration.installing)
+        //  console.log("Registration successfully");
+          .then(worker => {
+            worker.addEventListener('statechange', () => {
+              if (worker.state !== 'activated') return;
+
+              // Add a controlled iframe.
+              document.querySelector('iframe').src = 'frame.html';
+            });
+          });
+      };
+    };
+});
+
+</script>
+<iframe id="frame" style="width: 700px; height: 300px;"></iframe>
